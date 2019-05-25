@@ -1,0 +1,223 @@
+using System;
+using System.Linq;
+
+/*
+ * IEEE Standard 754 Floating Point
+ * 
+ * Author: Jeffrey Lemoine 
+ * CSC 4101 - Programming Languages - Dr. Mahmoud 
+ * 
+ * Description: Input a decimal number and this program will print its binary representation in both 32 and 64 bits. 
+ * 
+ * Useful links: 
+ *  https://www.h-schmidt.net/FloatConverter/IEEE754.html
+ *  https://kyledewey.github.io/comp122-fall17/lecture/week_2/floating_point_interconversions.html
+ *  https://babbage.cs.qc.cuny.edu/ieee-754.old/decimal.html
+ *  
+ *  Link to run on .NET Fiddle : https://dotnetfiddle.net/RlniKB
+ * 
+ */
+namespace FP_IEEE754
+{
+	public class MainClass
+	{
+		public static string Fractional_to_binary(string fractional, int significand_size, double tolerance)
+		{
+			uint num_seen = 0;
+			double frac = double.Parse(fractional);
+			string binary = "";
+			if (frac < tolerance)
+			{
+				return "0";
+			}
+
+			while (num_seen < significand_size)
+			{
+				if (Math.Abs(frac) < tolerance)
+				{
+					return binary;
+				}
+
+				frac = frac * 2;
+				if (frac > 1.0 || Math.Abs(frac - 1.0) < tolerance)
+				{
+					binary += "1";
+					frac = frac - Math.Floor(frac);
+				}
+				else
+				{
+					binary += "0";
+				}
+
+				num_seen += 1;
+			}
+
+			if (Math.Abs(frac) < tolerance)
+			{
+				return binary;
+			}
+
+			frac = frac * 2;
+			if (frac > 1.0 || Math.Abs(frac - 1.0) < tolerance)
+			{
+				binary += "1";
+			}
+			else
+			{
+				binary += "0";
+			}
+
+			return binary;
+		}
+
+		public static void Hexer(string binary)
+		{
+			var hex = string.Join(" ", Enumerable.Range(0, binary.Length / 8).Select(i => Convert.ToByte(binary.Substring(i * 8, 8), 2).ToString("X2")));
+			Console.WriteLine(hex);
+		}
+
+		public static string Binarize(string number, int precision)
+		{
+			int BIAS;
+			int significand_size;
+			int exp_length;
+			if (precision == 32)
+			{
+				significand_size = 23;
+				BIAS = 127;
+				exp_length = 8;
+			}
+			else if (precision == 64)
+			{
+				significand_size = 52;
+				BIAS = 1023;
+				exp_length = 11;
+			}
+			else
+			{
+				throw new Exception("Precision must be 32 or 64");
+			}
+
+			// Check sign
+			uint sign = 0;
+			if (number.StartsWith("-", StringComparison.Ordinal))
+			{
+				sign += 1;
+				number = number.TrimStart('-');
+			}
+
+			// Add implied 0's 
+			if (number.StartsWith(".", StringComparison.Ordinal))
+			{
+				number = "0" + number;
+			}
+
+			if (!number.Contains('.'))
+			{
+				number += ".0";
+			}
+
+			// Parse integer portion (the characteristic) and mantissa  
+			string[] split = number.Split('.');
+			long characteristic = long.Parse(split[0]);
+			string binary_characteristic = Convert.ToString(characteristic, 2);
+			// Get Mantissa and convert to binary 
+			string mantissa = "0." + split[1];
+			string binary_mantissa = Fractional_to_binary(mantissa, significand_size, .00000000000001);
+			// Normalize 
+			int normalizer;
+			if (binary_characteristic.Length != 1)
+			{
+				int index_of_1 = binary_characteristic.IndexOf('1');
+				// Move decimal point to the left 
+				binary_characteristic = binary_characteristic.Substring(index_of_1 + 1);
+				normalizer = binary_characteristic.Length;
+			}
+			else
+			{
+				if (binary_characteristic == "0")
+				{
+					int index_of_1 = binary_mantissa.IndexOf('1');
+					if (index_of_1 > 0)
+					{
+						// Move decimal point to the right 
+						normalizer = -(index_of_1 + 1);
+						binary_mantissa = binary_mantissa.Substring(index_of_1 + 1);
+					}
+					else
+					{
+						// The inputed number is all zeros
+						normalizer = -BIAS;
+					}
+				}
+				else // binary_characteristic == "1"
+				{
+					// the inputed number is already normalized 
+					normalizer = 0;
+				}
+
+				binary_characteristic = "";
+			}
+
+			// Ensure correct length of mantissa 
+			int n = binary_mantissa.Length + binary_characteristic.Length;
+			if (n > significand_size)
+			{
+				// trim mantissa 
+				string tmp = "";
+				for (int i = 0; i < significand_size - binary_characteristic.Length; i++)
+				{
+					tmp += binary_mantissa[i];
+				}
+
+				binary_mantissa = tmp;
+				// Characterisitic overflow, remove mantissa 
+				if (binary_characteristic.Length > significand_size)
+				{
+					// trim characteristic  
+					tmp = "";
+					for (int i = 0; i < significand_size; i++)
+					{
+						tmp += binary_characteristic[i];
+					}
+
+					binary_characteristic = tmp;
+					binary_mantissa = "";
+				}
+			}
+			else
+			{
+				// Add trailing zeros 
+				while ((binary_characteristic.Length + binary_mantissa.Length) != significand_size)
+				{
+					binary_mantissa += "0";
+				}
+			}
+
+			// Make exponent in binary 
+			string exponent = Convert.ToString(normalizer + BIAS, 2);
+			// Add leading zeros to exponent 
+			n = exponent.Length;
+			for (int i = exp_length - n; i > 0; i--)
+			{
+				exponent = "0" + exponent;
+			}
+
+			// Add components 
+			string binary = sign + exponent + binary_characteristic + binary_mantissa;
+			// Show Hex 
+			//Hexer(binary); 
+			return binary;
+		}
+
+		public static void Main(string[] args)
+		{
+			Console.WriteLine("Provide a decimal number:");
+			string number = Console.ReadLine();
+			int significand_size = 32;
+			Console.WriteLine(Binarize(number, significand_size));
+			significand_size = 64;
+			Console.WriteLine(Binarize(number, significand_size));
+		}
+	}
+}
